@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { onAuthStateChanged, User, GoogleAuthProvider, signInWithRedirect, signOut as firebaseSignOut } from 'firebase/auth';
-import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { UserProfile } from '@/types';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -25,43 +25,39 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     let unsubscribeFromProfile: (() => void) | undefined;
 
-    const unsubscribeFromAuth = onAuthStateChanged(auth, async (userAuth) => {
+    const unsubscribeFromAuth = onAuthStateChanged(auth, (userAuth) => {
       if (unsubscribeFromProfile) {
         unsubscribeFromProfile();
-        unsubscribeFromProfile = undefined;
       }
 
       if (userAuth) {
         const userRef = doc(db, 'users', userAuth.uid);
-        
-        unsubscribeFromProfile = onSnapshot(userRef, (snapshot) => {
+        unsubscribeFromProfile = onSnapshot(userRef, async (snapshot) => {
           if (snapshot.exists()) {
             setUserProfile(snapshot.data() as UserProfile);
+            setUser(userAuth);
+            setLoading(false);
+          } else {
+            // New user, create profile
+            try {
+              const newUserProfile: UserProfile = {
+                  uid: userAuth.uid,
+                  email: userAuth.email,
+                  role: 'user',
+                  currentStreak: 0,
+                  lastCheckIn: null,
+                  name: userAuth.displayName,
+                  photoURL: userAuth.photoURL,
+              };
+              await setDoc(userRef, newUserProfile);
+              // The onSnapshot will re-trigger with the new data, 
+              // and the if (snapshot.exists()) block will execute next.
+            } catch(error) {
+              console.error("Error creating user profile:", error);
+              setLoading(false); // Stop loading even if profile creation fails
+            }
           }
         });
-
-        // Check if user exists, if not, create them
-        try {
-            const userDoc = await getDoc(userRef);
-            if (!userDoc.exists()) {
-                const newUserProfile: UserProfile = {
-                    uid: userAuth.uid,
-                    email: userAuth.email,
-                    role: 'user',
-                    currentStreak: 0,
-                    lastCheckIn: null,
-                    name: userAuth.displayName,
-                    photoURL: userAuth.photoURL,
-                };
-                await setDoc(userRef, newUserProfile);
-                setUserProfile(newUserProfile);
-            }
-        } catch (error) {
-            console.error("Error checking/creating user profile:", error);
-        }
-
-        setUser(userAuth);
-        setLoading(false);
       } else {
         setUser(null);
         setUserProfile(null);
@@ -78,6 +74,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const signIn = async () => {
+    setLoading(true); // Show loading indicator immediately on sign-in attempt
     const provider = new GoogleAuthProvider();
     await signInWithRedirect(auth, provider);
   };
