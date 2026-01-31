@@ -6,7 +6,7 @@ import { collection, query, where, getDocs, Timestamp, onSnapshot } from "fireba
 import { db } from "@/lib/firebase";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar } from "@/components/ui/calendar";
-import { FireIcon } from "lucide-react";
+import { Flame } from "lucide-react";
 import { Skeleton } from "../ui/skeleton";
 
 export function ProgressTab() {
@@ -35,7 +35,7 @@ export function ProgressTab() {
   const DayWithFire = ({ date }: { date: Date }) => (
     <div className="relative flex h-full w-full items-center justify-center">
       <span className="absolute">{date.getDate()}</span>
-      <FireIcon className="h-5 w-5 text-primary opacity-60" />
+      <Flame className="h-5 w-5 text-primary opacity-60" />
     </div>
   );
 
