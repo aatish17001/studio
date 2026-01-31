@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { onAuthStateChanged, User, GoogleAuthProvider, signInWithRedirect, signOut as firebaseSignOut } from 'firebase/auth';
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { UserProfile } from '@/types';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -23,58 +23,45 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let unsubscribeFromProfile: (() => void) | undefined;
-
-    const unsubscribeFromAuth = onAuthStateChanged(auth, (userAuth) => {
-      if (unsubscribeFromProfile) {
-        unsubscribeFromProfile();
-      }
-
+    const unsubscribe = onAuthStateChanged(auth, async (userAuth) => {
       if (userAuth) {
         const userRef = doc(db, 'users', userAuth.uid);
-        unsubscribeFromProfile = onSnapshot(userRef, async (snapshot) => {
+        try {
+          const snapshot = await getDoc(userRef);
           if (snapshot.exists()) {
             setUserProfile(snapshot.data() as UserProfile);
-            setUser(userAuth);
-            setLoading(false);
           } else {
             // New user, create profile
-            try {
-              const newUserProfile: UserProfile = {
-                  uid: userAuth.uid,
-                  email: userAuth.email,
-                  role: 'user',
-                  currentStreak: 0,
-                  lastCheckIn: null,
-                  name: userAuth.displayName,
-                  photoURL: userAuth.photoURL,
-              };
-              await setDoc(userRef, newUserProfile);
-              // The onSnapshot will re-trigger with the new data, 
-              // and the if (snapshot.exists()) block will execute next.
-            } catch(error) {
-              console.error("Error creating user profile:", error);
-              setLoading(false); // Stop loading even if profile creation fails
-            }
+            const newUserProfile: UserProfile = {
+              uid: userAuth.uid,
+              email: userAuth.email,
+              role: 'user',
+              currentStreak: 0,
+              lastCheckIn: null,
+              name: userAuth.displayName,
+              photoURL: userAuth.photoURL,
+            };
+            await setDoc(userRef, newUserProfile);
+            setUserProfile(newUserProfile);
           }
-        });
+          setUser(userAuth);
+        } catch (error) {
+          console.error("Auth provider error:", error);
+          setUser(null);
+          setUserProfile(null);
+        }
       } else {
         setUser(null);
         setUserProfile(null);
-        setLoading(false);
       }
+      setLoading(false);
     });
 
-    return () => {
-      unsubscribeFromAuth();
-      if (unsubscribeFromProfile) {
-        unsubscribeFromProfile();
-      }
-    };
+    return () => unsubscribe();
   }, []);
 
   const signIn = async () => {
-    setLoading(true); // Show loading indicator immediately on sign-in attempt
+    setLoading(true);
     const provider = new GoogleAuthProvider();
     await signInWithRedirect(auth, provider);
   };
@@ -82,7 +69,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signOut = async () => {
     await firebaseSignOut(auth);
   };
-
+  
   const value = { user, userProfile, loading, signIn, signOut };
 
   if (loading) {
