@@ -25,7 +25,11 @@ export function AuthGuard({ children, requiredRole = 'any' }: AuthGuardProps) {
     }
 
     if (requiredRole !== 'any' && userProfile?.role !== requiredRole) {
-      router.push('/');
+      if (userProfile?.role === 'admin') {
+        router.push('/admin');
+      } else {
+        router.push('/');
+      }
     }
   }, [user, userProfile, loading, router, requiredRole]);
 
