@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { onAuthStateChanged, User, GoogleAuthProvider, signInWithRedirect, signOut as firebaseSignOut } from 'firebase/auth';
-import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { UserProfile } from '@/types';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -23,32 +23,45 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (userAuth) => {
+    let unsubscribeFromProfile: (() => void) | undefined;
+
+    const unsubscribeFromAuth = onAuthStateChanged(auth, async (userAuth) => {
+      if (unsubscribeFromProfile) {
+        unsubscribeFromProfile();
+        unsubscribeFromProfile = undefined;
+      }
+
       if (userAuth) {
-        setUser(userAuth);
         const userRef = doc(db, 'users', userAuth.uid);
-        const unsubSnapshot = onSnapshot(userRef, (snapshot) => {
+        
+        unsubscribeFromProfile = onSnapshot(userRef, (snapshot) => {
           if (snapshot.exists()) {
             setUserProfile(snapshot.data() as UserProfile);
-            setLoading(false);
-          } else {
-            // Create user document if it doesn't exist
-            const newUserProfile: UserProfile = {
-              uid: userAuth.uid,
-              email: userAuth.email,
-              role: 'user',
-              currentStreak: 0,
-              lastCheckIn: null,
-              name: userAuth.displayName,
-              photoURL: userAuth.photoURL,
-            };
-            setDoc(userRef, newUserProfile).then(() => {
-              setUserProfile(newUserProfile);
-              setLoading(false);
-            });
           }
         });
-        return () => unsubSnapshot();
+
+        // Check if user exists, if not, create them
+        try {
+            const userDoc = await getDoc(userRef);
+            if (!userDoc.exists()) {
+                const newUserProfile: UserProfile = {
+                    uid: userAuth.uid,
+                    email: userAuth.email,
+                    role: 'user',
+                    currentStreak: 0,
+                    lastCheckIn: null,
+                    name: userAuth.displayName,
+                    photoURL: userAuth.photoURL,
+                };
+                await setDoc(userRef, newUserProfile);
+                setUserProfile(newUserProfile);
+            }
+        } catch (error) {
+            console.error("Error checking/creating user profile:", error);
+        }
+
+        setUser(userAuth);
+        setLoading(false);
       } else {
         setUser(null);
         setUserProfile(null);
@@ -56,7 +69,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeFromAuth();
+      if (unsubscribeFromProfile) {
+        unsubscribeFromProfile();
+      }
+    };
   }, []);
 
   const signIn = async () => {
