@@ -30,6 +30,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const unsubSnapshot = onSnapshot(userRef, (snapshot) => {
           if (snapshot.exists()) {
             setUserProfile(snapshot.data() as UserProfile);
+            setLoading(false);
           } else {
             // Create user document if it doesn't exist
             const newUserProfile: UserProfile = {
@@ -43,9 +44,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             };
             setDoc(userRef, newUserProfile).then(() => {
               setUserProfile(newUserProfile);
+              setLoading(false);
             });
           }
-          setLoading(false);
         });
         return () => unsubSnapshot();
       } else {
